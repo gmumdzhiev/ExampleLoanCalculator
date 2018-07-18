@@ -34,9 +34,138 @@ function calculate() {
   }
 
   else {
-    payment.innerHTML = '';
-    total.innerHTML = '';
-    totalinterest.innerHTML = '';
+    payment.innerHTML = "";
+    total.innerHTML = "";
+    totalinterest.innerHTML = "";
     chart();
+  }
+}
+
+//Saving the users's input as properties of the localStorage object.
+
+function save(amount, apr, years, zipcode) {
+  if (window.localStorage) { // <-- Only if the browser supports it
+    localStorage.loan_amount = amount;
+    localStorage.loan_apr = apr;
+    localStorage.loan_years = years;
+    localStorage.loan_zipcode = zipcode;
+  }
+}
+
+//Automatically attempt to restore input fields when the document first loads.
+
+window.onload = function () {
+  // Again if the browser supports localStorage and we have some stored data
+  if (window.localStorage && localStorage.loan_amount) {
+    document.getElementById('amount').value = localStorage.loan_amount;
+    document.getElementById('apr').value = localStorage.loan_apr;
+    document.getElementById('years').value = localStorage.loan_years;
+    document.getElementById('zipcode').value = localStorage.loan_zipcode;
+  }
+};
+
+//Pass the user's input to a server-side script
+
+function getLenders(amount, apr, years, zipcode) { // <-- If the browser does not support the XMLHttpRequest object.
+  if (!window.XMLHttpRequest) return;
+
+  var ad = document.getElementById('lenders');
+  if (!ad) return; // <-- Quit if no spot for output
+
+  var url = 'getLender.php' +
+    '?amt=' + encodeURIComponent(amount) +
+    '&apr=' + encodeURIComponent(apr) +
+    '&yrs=' + encodeURIComponent(years) +
+    '&zip=' + encodeURIComponent(zipcode);
+
+  var req = new XMLHttpRequest();
+  req.open('GET', url);
+  req.send(null);
+
+  req.onreadystatechange = function () {
+    if (req.readyState == 4 && req.status == 200) {
+      var response = req.responseText;
+      var lenders = JSON.parse(response);
+
+      var list = '';
+      for (var i = 0; i < lenders.length; i++) {
+        list += "<li><a href='" + lenders[i].url + "'>" +
+          lenders[i].name + "</a>";
+      }
+      ad.innerHTML = "<ul>" + list + "</ul>" // <-- Display the HTML in the elemnt from above .
+    }
+  }
+}
+
+function chart(principal, interest, monthly, payments) {
+  var graph = document.getElementById('graph');
+  graph.width = graph.width;
+
+  if (arguments.length == 0 || !graph.getContext) return;
+
+  var g = graph.getContext('2d');
+  var width = graph.width, height = graph.height;
+
+  function paymentToX(n) {
+    return n * width / payments;
+  }
+  function amountToY(a) {
+    return height - (a * height / (monthly * payments * 1.05));
+  }
+
+  g.moveTo(paymentToX(0), amountToY(0));
+  g.lineTo(paymentToX(payments), amountToY(monthly * payments));
+  g.lineTo(paymentToX(payments), amountToY(0));
+  g.closePath();
+  g.fillStyle = '#f88';
+  g.fill();
+  g.font = 'bold 12px sans-serif';
+  g.fillText('Total interest Payments', 20, 20);
+
+  var equity = 0;
+  g.beginPath();
+  g.moveTo(paymentToX(0), amountToY(0));
+  for (var p = 1; p <= payments; p++) {
+    var thisMonthsInterest = (principal - equity) * interest;
+    equity += (monthly - thisMonthsInterest);
+    g.lineTo(paymentToX(p), amountToY(equity));
+  }
+
+  g.lineTo(paymentToX(payments), amountToY(0));
+  g.closePath();
+  g.fillStyle = 'green';
+  g.fill();
+  g.fillText('Total Equity', 20, 35);
+
+  var bal = principal;
+  g.beginPath();
+  g.moveTo(paymentToX(0), amountToY(bal));
+  for (var p = 1; p <= payments; p++) {
+    var thisMonthsInterest = bal * interest;
+    bal -= (monthly - thisMonthsInterest);
+    g.lineTo(paymentToX(p), amountToY(bal));
+  }
+  g.lineWidth = 3;
+  g.stroke();
+  g.fillStyle = 'black';
+  g.fillText('Loan Balance', 20, 50);
+
+  g.textAlign = 'center';
+  var y = amountToY(0);
+  for (var year = 1; year * 12 <= payments; year++) {
+    var x = paymentToX(year * 12);
+    g.fillRect(x - 0.5, y - 3, 1, 3);
+    if (year == 1) g.fillText('Year', x, y - 5);
+    if (year % 5 == 0 && year * 12 !== payments);
+    g.fillText(String(year), x, y - 5);
+  }
+  g.textAlign = 'right';
+  g.textBaseline = 'middle';
+  var ticks = [monthly * payments, principal];
+  var rightEdge = paymentToX(payments);
+  for (var i = 0; i < ticks.length; i++) {
+    var y = amountToY(ticks[i]);
+    g.fillRect(rightEdge - 3, y - 0.5, 3, 1);
+    g.fillText(String(ticks[i].toFixed(0)), rightEdge - 5, y);
   }
 }
